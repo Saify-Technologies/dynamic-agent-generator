@@ -197,7 +197,7 @@ Each generated agent can be configured through its `agent_config.json`:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License. This means you can use, share, and adapt the material for non-commercial purposes, provided you give appropriate credit. For more details, see the LICENSE file.
 
 ## 🙏 Acknowledgments
 
