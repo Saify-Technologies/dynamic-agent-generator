@@ -20,26 +20,27 @@ A system for dynamically generating specialized CodeAgents using Hugging Face Sp
 
 ## 🚀 Installation
 
-1. Clone the repository:
+You can install the package directly from GitHub:
 ```bash
-git clone https://github.com/Saify-Technologies/dynamic-agent-generator.git
+pip install git+https://github.com/yourusername/dynamic-agent-generator.git
+```
+
+Or clone and install in development mode:
+```bash
+git clone https://github.com/yourusername/dynamic-agent-generator.git
 cd dynamic-agent-generator
+pip install -e .
 ```
 
-2. Create a virtual environment (recommended):
-```bash
-# Using venv
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+## Command Line Usage
 
-# Or using conda
-conda create -n agent-gen python=3.8
-conda activate agent-gen
-```
-
-3. Install dependencies:
+After installation, you can use the command-line tool:
 ```bash
-pip install -r requirements.txt
+# Generate an agent from requirements file
+generate-agent -r requirements.txt -o output_directory
+
+# Or directly from requirements string
+generate-agent -r "Create an agent that can generate images..." -o output_directory
 ```
 
 4. Set up your Hugging Face token:
