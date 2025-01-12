@@ -204,6 +204,8 @@ This project is licensed under the Creative Commons Attribution-NonCommercial 4.
 - Hugging Face for Spaces and models
 - smolagents library
 - All contributors and maintainers
+- Saify Technologies for their support and innovation. Visit [Saify Technologies](https://saifytech.com) for more information.
+- Saifs AI, our cutting-edge AI product. Learn more at [Saifs AI](https://saifs.ai).
 
 ## 📧 Contact
 
