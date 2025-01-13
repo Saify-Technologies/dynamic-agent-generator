@@ -1,4 +1,4 @@
-from smolagents import Tool
+from smolagents import Tool, tool
 
 @tool
 def generate_space_tool(space_id: str, name: str, description: str) -> Tool:

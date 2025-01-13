@@ -1,4 +1,4 @@
-from smolagents import tool
+from smolagents import tool, Tool
 import os
 import black
 
