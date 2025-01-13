@@ -1,5 +1,7 @@
 include README.md
 include requirements.txt
-include LICENSE
-recursive-include dynamic_agent_generator/examples *
-recursive-include dynamic_agent_generator/templates * 
+recursive-include src/dynamic_agent_generator *
+recursive-include examples *
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so 
