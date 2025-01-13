@@ -1,12 +1,28 @@
 from smolagents import tool
 import requests
 from bs4 import BeautifulSoup
-from typing import List, Dict
+from typing import List, Dict, Optional
 import re
 import json
 
-@tool
-def search_huggingface_spaces(query: str, max_results: int = 5) -> str:
+@tool(
+    name="search_huggingface_spaces",
+    description="Search for Hugging Face Spaces using DuckDuckGo",
+    inputs={
+        "query": {
+            "type": "string",
+            "description": "Search query for the type of Space needed"
+        },
+        "max_results": {
+            "type": "integer",
+            "description": "Maximum number of results to return",
+            "nullable": True,
+            "default": 5
+        }
+    },
+    output_type="string"
+)
+def search_huggingface_spaces(query: str, max_results: Optional[int] = 5) -> str:
     """
     Search for Hugging Face Spaces using DuckDuckGo
     
@@ -52,7 +68,17 @@ def search_huggingface_spaces(query: str, max_results: int = 5) -> str:
     
     return json.dumps(results)
 
-@tool
+@tool(
+    name="validate_space",
+    description="Validate if a Hugging Face Space exists and is accessible",
+    inputs={
+        "space_id": {
+            "type": "string",
+            "description": "The Hugging Face Space ID to validate"
+        }
+    },
+    output_type="string"
+)
 def validate_space(space_id: str) -> str:
     """
     Validate if a Hugging Face Space exists and is accessible
