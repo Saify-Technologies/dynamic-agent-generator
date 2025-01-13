@@ -34,6 +34,50 @@ class AgentSetupTool(Tool):
     }
     output_type = "string"
 
+    def _generate_tool_template(self, tool_name: str, description: str) -> str:
+        """Generate a tool class template that follows smolagents standards"""
+        return f'''
+from smolagents import Tool
+from typing import Optional
+import json
+
+class {tool_name}Tool(Tool):
+    """{{description}}"""
+    
+    name = "{tool_name.lower()}"
+    description = "{{description}}"
+    inputs = {{
+        "input": {{
+            "type": "string",
+            "description": "Input description"
+        }},
+        "optional_param": {{
+            "type": "string",
+            "description": "Optional parameter",
+            "nullable": True
+        }}
+    }}
+    output_type = "string"
+
+    def forward(self, input: str, optional_param: Optional[str] = None) -> str:
+        """
+        Tool implementation
+        
+        Args:
+            input: Input description
+            optional_param: Optional parameter description
+        
+        Returns:
+            str: JSON string containing results
+        """
+        # Implementation here
+        results = {{"result": "value"}}
+        return json.dumps(results)
+
+# Create instance of the tool
+{tool_name.lower()} = {tool_name}Tool()
+'''
+
     def forward(
         self,
         agent_name: str,
@@ -67,32 +111,61 @@ class AgentSetupTool(Tool):
         tools_dir = os.path.join(agent_dir, "tools")
         os.makedirs(tools_dir, exist_ok=True)
         
-        # Copy tools to the tools directory
+        # Create tools with proper Tool class implementation
         for tool in tools:
             if 'file_path' in tool:
-                tool_name = os.path.basename(tool['file_path'])
-                shutil.copy2(tool['file_path'], os.path.join(tools_dir, tool_name))
+                tool_content = self._generate_tool_template(
+                    tool_name=tool['name'],
+                    description=tool.get('description', 'Tool description')
+                )
+                tool_path = os.path.join(tools_dir, f"{tool['name'].lower()}.py")
+                with open(tool_path, "w") as f:
+                    f.write(tool_content)
         
         # Create main agent file
         agent_file_content = f'''
 from smolagents import CodeAgent, HfApiModel
 from tools import *
 import os
+import json
 
-def create_agent(hf_token=None):
-    model = HfApiModel(
-        model_id="{config.get('model_id', 'meta-llama/Llama-2-70b-chat-hf')}",
-        token=hf_token or os.getenv("HF_TOKEN")
-    )
+class {agent_name}Agent:
+    """Generated agent for {agent_name}"""
     
-    agent = CodeAgent(
-        tools=[{", ".join(t['name'] for t in tools)}],
-        model=model,
-        system_prompt="""{config.get('system_prompt', '')}""",
-        additional_authorized_imports={config.get('imports', [])}
-    )
+    def __init__(self, hf_token: Optional[str] = None):
+        self.model = HfApiModel(
+            model_id="{config.get('model_id', 'meta-llama/Llama-2-70b-chat-hf')}",
+            token=hf_token or os.getenv("HF_TOKEN")
+        )
+        
+        self.agent = CodeAgent(
+            tools=[{", ".join(f"{t['name'].lower()}" for t in tools)}],
+            model=self.model,
+            system_prompt="""{config.get('system_prompt', '')}""",
+            additional_authorized_imports=[
+                "os", "json", "typing", "smolagents"
+            ] + {config.get('imports', [])}
+        )
     
-    return agent
+    def run(self, prompt: str) -> str:
+        """
+        Run the agent with the given prompt
+        
+        Args:
+            prompt: Input prompt for the agent
+        
+        Returns:
+            str: Agent's response
+        """
+        try:
+            result = self.agent.run(prompt)
+            return json.dumps({{"status": "success", "result": result}})
+        except Exception as e:
+            return json.dumps({{"status": "error", "error": str(e)}})
+
+def create_agent(hf_token: Optional[str] = None) -> {agent_name}Agent:
+    """Create an instance of the agent"""
+    return {agent_name}Agent(hf_token=hf_token)
 
 if __name__ == "__main__":
     agent = create_agent()
@@ -153,11 +226,20 @@ if __name__ == "__main__":
         with open(os.path.join(agent_dir, "run.py"), "w") as f:
             f.write(run_script_content)
         
-        # Create requirements.txt
+        # Add smolagents type validation to requirements
+        base_requirements = [
+            "smolagents>=1.2.2",
+            "huggingface-hub>=0.19.0",
+        ]
+        
         if requirements:
             req_list = [r.strip() for r in requirements.split(",") if r.strip()]
-            with open(os.path.join(agent_dir, "requirements.txt"), "w") as f:
-                f.write("\n".join(req_list))
+            all_requirements = base_requirements + req_list
+        else:
+            all_requirements = base_requirements
+
+        with open(os.path.join(agent_dir, "requirements.txt"), "w") as f:
+            f.write("\n".join(all_requirements))
         
         # Create README.md
         readme_content = f'''
