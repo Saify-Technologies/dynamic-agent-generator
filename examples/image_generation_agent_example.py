@@ -1,4 +1,4 @@
-from src.agent_generator import AgentGenerator
+from dynamic_agent_generator import AgentGenerator
 import os
 
 def main():
