@@ -4,6 +4,7 @@ from .tools.space_tool_generator import generate_space_tool
 from .tools.search_tools import search_huggingface_spaces, validate_space
 from .tools.agent_setup_tools import setup_agent_directory
 from .tools.dependency_tools import install_dependencies, check_dependencies
+import json
 
 class AgentGenerator:
     def __init__(self, model_id="meta-llama/Llama-2-70b-chat-hf", hf_token=None):
@@ -22,7 +23,7 @@ class AgentGenerator:
             model=self.model,
             additional_authorized_imports=[
                 "os", "black", "smolagents", "requests", "bs4",
-                "subprocess", "sys", "pkg_resources"
+                "subprocess", "sys", "pkg_resources", "json"
             ]
         )
         
@@ -41,8 +42,8 @@ class AgentGenerator:
         Follow these steps:
         1. First analyze what tools will be needed
         2. For each required capability:
-           a. Use search_huggingface_spaces to find relevant Spaces
-           b. Validate found Spaces using validate_space
+           a. Use search_huggingface_spaces to find relevant Spaces (returns JSON string)
+           b. Parse the JSON response and validate found Spaces
            c. If a suitable Space is found, use generate_space_tool
            d. If no suitable Space exists, generate a custom tool
         3. Create the CodeAgent configuration file with:
@@ -53,6 +54,7 @@ class AgentGenerator:
         
         When searching for Spaces:
         - Use specific search terms (e.g., "stable diffusion image generation gradio")
+        - Parse the JSON responses carefully
         - Validate that Spaces are still active and accessible
         - Prefer Spaces with:
           * High usage statistics

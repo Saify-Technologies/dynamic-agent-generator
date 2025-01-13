@@ -3,9 +3,10 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict
 import re
+import json
 
 @tool
-def search_huggingface_spaces(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+def search_huggingface_spaces(query: str, max_results: int = 5) -> str:
     """
     Search for Hugging Face Spaces using DuckDuckGo
     
@@ -14,13 +15,7 @@ def search_huggingface_spaces(query: str, max_results: int = 5) -> List[Dict[str
         max_results: Maximum number of results to return
     
     Returns:
-        List of dictionaries containing space information:
-        {
-            'space_id': 'username/space-name',
-            'title': 'Space title',
-            'description': 'Space description',
-            'url': 'https://huggingface.co/spaces/username/space-name'
-        }
+        str: JSON string containing list of space information
     """
     search_url = f"https://duckduckgo.com/html/?q=site:huggingface.co/spaces {query}"
     
@@ -55,10 +50,10 @@ def search_huggingface_spaces(query: str, max_results: int = 5) -> List[Dict[str
             'url': f"https://huggingface.co/spaces/{space_id}"
         })
     
-    return results
+    return json.dumps(results)
 
 @tool
-def validate_space(space_id: str) -> Dict[str, bool]:
+def validate_space(space_id: str) -> str:
     """
     Validate if a Hugging Face Space exists and is accessible
     
@@ -66,13 +61,15 @@ def validate_space(space_id: str) -> Dict[str, bool]:
         space_id: The Hugging Face Space ID to validate
     
     Returns:
-        Dictionary with validation results
+        str: JSON string with validation results
     """
     url = f"https://huggingface.co/spaces/{space_id}"
     response = requests.get(url)
     
-    return {
+    results = {
         'exists': response.status_code == 200,
         'is_gradio': 'gradio' in response.text.lower() if response.status_code == 200 else False,
         'is_accessible': response.status_code == 200
-    } 
+    }
+    
+    return json.dumps(results) 
