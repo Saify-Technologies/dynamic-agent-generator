@@ -22,12 +22,12 @@ A system for dynamically generating specialized CodeAgents using Hugging Face Sp
 
 You can install the package directly from GitHub:
 ```bash
-pip install git+https://github.com/yourSaify-Technologies/dynamic-agent-generator.git
+pip install git+https://github.com/Saify-Technologies/dynamic-agent-generator.git
 ```
 
 Or clone and install in development mode:
 ```bash
-git clone https://github.com/yourSaify-Technologies/dynamic-agent-generator.git
+git clone https://github.com/Saify-Technologies/dynamic-agent-generator.git
 cd dynamic-agent-generator
 pip install -e .
 ```
