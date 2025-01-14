@@ -5,6 +5,8 @@ from .tools.search_tools import search_huggingface_spaces, validate_space, duckd
 from .tools.agent_structure_generator import generate_agent_structure
 from .tools.dependency_tools import install_dependencies, check_dependencies
 import json
+import os
+from typing import List, Dict, Optional
 
 class AgentGenerator:
     def __init__(self, model_id="meta-llama/Llama-2-70b-chat-hf", hf_token=None, max_steps=10):
@@ -28,8 +30,24 @@ class AgentGenerator:
                 "subprocess", "sys", "pkg_resources", "json"
             ]
         )
+
+    def _collect_generated_tools(self, agent_dir: str) -> List[Dict]:
+        """Collect information about generated tools"""
+        tools = []
+        tools_dir = os.path.join(agent_dir, "src", "tools")
         
-    def generate_agent(self, requirements: str, output_dir: str, custom_max_steps: int = None):
+        if os.path.exists(tools_dir):
+            for file in os.listdir(tools_dir):
+                if file.endswith('.py') and file != '__init__.py':
+                    tool_name = file[:-3]  # Remove .py extension
+                    tools.append({
+                        'name': tool_name,
+                        'import_path': f'.tools.{tool_name}'
+                    })
+        
+        return tools
+
+    def generate_agent(self, requirements: str, output_dir: str, custom_max_steps: Optional[int] = None):
         """
         Generates a new CodeAgent based on requirements
         
@@ -38,16 +56,76 @@ class AgentGenerator:
             output_dir: Directory to save generated agent
             custom_max_steps: Optional override for max steps for this specific generation
         """
-        if custom_max_steps is not None:
-            temp_agent = CodeAgent(
-                tools=self.agent.tools,
-                model=self.model,
-                max_steps=custom_max_steps,
-                additional_authorized_imports=self.agent._additional_authorized_imports
-            )
-            return temp_agent.run(self._build_prompt(requirements, output_dir))
+        try:
+            # First, generate the agent structure and tools
+            if custom_max_steps is not None:
+                temp_agent = CodeAgent(
+                    tools=self.agent.tools,
+                    model=self.model,
+                    max_steps=custom_max_steps,
+                    additional_authorized_imports=self.agent._additional_authorized_imports
+                )
+                result = temp_agent.run(self._build_prompt(requirements, output_dir))
+            else:
+                result = self.agent.run(self._build_prompt(requirements, output_dir))
+
+            # Parse the result
+            result_data = json.loads(result)
+            if result_data.get('status') == 'success':
+                agent_dir = result_data.get('agent_dir')
+                
+                # Collect information about generated tools
+                generated_tools = self._collect_generated_tools(agent_dir)
+                
+                # Update agent.py to include generated tools
+                self._update_agent_imports(agent_dir, generated_tools)
+                
+                return json.dumps({
+                    'status': 'success',
+                    'message': 'Agent generated successfully with all tools',
+                    'agent_dir': agent_dir,
+                    'generated_tools': generated_tools
+                })
+            
+            return result
+
+        except Exception as e:
+            return json.dumps({
+                'status': 'error',
+                'error': str(e)
+            })
+
+    def _update_agent_imports(self, agent_dir: str, tools: List[Dict]):
+        """Update agent.py to include all generated tools"""
+        agent_file = os.path.join(agent_dir, "src", "agent.py")
         
-        return self.agent.run(self._build_prompt(requirements, output_dir))
+        if os.path.exists(agent_file):
+            with open(agent_file, 'r') as f:
+                content = f.read()
+            
+            # Add tool imports if not already present
+            import_section = "from smolagents import CodeAgent, HfApiModel, DuckDuckGoSearchTool\n"
+            for tool in tools:
+                import_section += f"from {tool['import_path']} import {tool['name']}\n"
+            
+            # Update tools list in CodeAgent initialization
+            tools_list = "[\n                self.search_tool,  # Add search tool first\n"
+            for tool in tools:
+                tools_list += f"                {tool['name']},\n"
+            tools_list += "            ]"
+            
+            # Update the content
+            content = content.replace(
+                "from smolagents import CodeAgent, HfApiModel, DuckDuckGoSearchTool",
+                import_section
+            )
+            content = content.replace(
+                "tools=[self.search_tool]",
+                f"tools={tools_list}"
+            )
+            
+            with open(agent_file, 'w') as f:
+                f.write(content)
 
     def _build_prompt(self, requirements: str, output_dir: str) -> str:
         """Helper method to build the generation prompt"""
@@ -72,6 +150,7 @@ class AgentGenerator:
            - This will create proper directory structure
            - Set up all necessary files
            - Include documentation and examples
+           - Ensure all generated tools are properly imported and initialized
         
         When searching for Spaces:
         - Use specific search terms based on web research
@@ -90,4 +169,5 @@ class AgentGenerator:
         - Proper initialization of CodeAgent with all tools
         - Include DuckDuckGoSearchTool in generated agent for web search capability
         - Proper directory structure and file organization
+        - Correct imports for all generated tools
         """ 

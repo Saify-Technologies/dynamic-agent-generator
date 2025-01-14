@@ -25,7 +25,7 @@ class ToolGenerator(Tool):
             "description": "Directory where the tool should be saved"
         },
         "input_types": {
-            "type": "dict",
+            "type": "object",
             "description": "Dictionary of input parameter specifications",
             "nullable": True
         },
