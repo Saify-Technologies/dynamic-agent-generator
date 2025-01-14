@@ -30,97 +30,124 @@ class HuggingFaceSpaceSearchTool(Tool):
     }
     output_type = "string"
 
-    def _expand_search_terms(self, query: str) -> List[str]:
-        """Expand search terms using web search"""
+    def _get_task_keywords(self, query: str) -> List[str]:
+        """Get task-related keywords without model names"""
+        # First, search for general task information
         duckduckgo = DuckDuckGoSearchTool()
         try:
-            # Search for related technical terms
-            search_results = json.loads(duckduckgo.run(f"technical terms for {query} AI ML tools"))
+            # Search for task-related terms rather than specific models
+            search_results = json.loads(duckduckgo.run(f"what is {query} task application use cases"))
             
-            if search_results['status'] != 'success':
-                return [query]
-                
-            # Extract keywords from search results
-            keywords = set()
+            # Categories of terms to extract
+            categories = {
+                'tasks': set(),  # e.g., "translation", "generation", "detection"
+                'domains': set(),  # e.g., "image", "text", "audio"
+                'applications': set(),  # e.g., "web app", "api", "interface"
+                'features': set()  # e.g., "real-time", "batch processing"
+            }
+            
             for result in search_results['results']:
-                # Extract words that might be technical terms
-                text = f"{result['title']} {result['snippet']}"
-                # Find technical terms using common patterns
-                technical_terms = re.findall(r'\b[A-Za-z]+(?:\s*[A-Za-z]+)*(?:\d*\.?\d+)?\b', text)
-                keywords.update(term.lower() for term in technical_terms if len(term) > 2)
+                text = f"{result['title']} {result['snippet']}".lower()
+                
+                # Extract task-related terms
+                if "task" in text or "application" in text or "use case" in text:
+                    # Find noun phrases that describe tasks
+                    task_terms = re.findall(r'\b\w+(?:\s+\w+){0,2}\b(?=\s+(?:task|application|processing|detection|generation|analysis))', text)
+                    categories['tasks'].update(task_terms)
+                
+                # Extract domain-specific terms
+                domain_indicators = ['image', 'text', 'audio', 'video', 'speech', 'data']
+                for indicator in domain_indicators:
+                    if indicator in text:
+                        domain_terms = re.findall(f'{indicator}\\s*\\w+', text)
+                        categories['domains'].update(domain_terms)
+                
+                # Extract application types
+                if "application" in text or "interface" in text:
+                    app_terms = re.findall(r'\b\w+(?:\s+\w+)?\s+(?:application|interface|app|api)\b', text)
+                    categories['applications'].update(app_terms)
+                
+                # Extract feature-related terms
+                feature_terms = re.findall(r'\b(?:real-time|online|batch|interactive|automated)\s+\w+\b', text)
+                categories['features'].update(feature_terms)
             
-            # Remove common words
+            # Combine all relevant terms
+            all_terms = set()
+            for terms in categories.values():
+                all_terms.update(terms)
+            
+            # Remove common words and very short terms
             common_words = {'the', 'and', 'or', 'but', 'for', 'with', 'in', 'on', 'at', 'to', 'of'}
-            keywords = keywords - common_words
+            filtered_terms = {term for term in all_terms if len(term) > 2 and term not in common_words}
             
-            return list(keywords)
+            return list(filtered_terms)
+            
         except Exception:
-            return [query]
-
-    def _is_ai_task(self, query: str, keywords: List[str]) -> bool:
-        """Check if the query is related to AI/ML tasks using expanded context"""
-        # Base AI/ML indicators
-        base_indicators = {
-            'model', 'inference', 'prediction', 'generation', 'classification',
-            'detection', 'recognition', 'ai', 'ml', 'deep learning', 'machine learning'
-        }
-        
-        # Check if any of the expanded keywords match known AI tasks
-        combined_terms = set(keywords) | {query.lower()}
-        return bool(combined_terms & base_indicators)
+            # Fallback to basic task extraction
+            return [term.strip() for term in query.split() if len(term.strip()) > 2]
 
     def forward(self, query: str, max_results: Optional[int] = 5, require_gradio: Optional[bool] = None) -> str:
         """
-        Search for Hugging Face Spaces with intelligent query expansion
+        Search for Hugging Face Spaces with task-focused approach
         
         Args:
             query: Search query for the type of Space needed
             max_results: Maximum number of results to return
-            require_gradio: Whether to require Gradio interface. If None, auto-detect based on task.
-        
-        Returns:
-            str: JSON string containing list of space information
+            require_gradio: Whether to require Gradio interface
         """
-        # Expand search terms
-        expanded_terms = self._expand_search_terms(query)
+        # Get task-related keywords
+        task_keywords = self._get_task_keywords(query)
         
-        # Auto-detect if Gradio should be required
-        if require_gradio is None:
-            require_gradio = self._is_ai_task(query, expanded_terms)
+        # Build search variations
+        search_variations = []
         
-        # Build search queries
-        search_queries = []
-        base_query = query.strip()
+        # Add task-focused searches
+        for keyword in task_keywords:
+            # Search for functionality rather than specific models
+            search_variations.extend([
+                f"{keyword} demo",
+                f"{keyword} application",
+                f"{keyword} interface",
+                f"interactive {keyword}"
+            ])
         
-        # Add the original query
-        search_queries.append(base_query)
+        # Add domain-specific searches
+        if any(domain in query.lower() for domain in ['image', 'text', 'audio', 'video']):
+            for domain in ['image', 'text', 'audio', 'video']:
+                if domain in query.lower():
+                    search_variations.extend([
+                        f"{domain} {kw}" for kw in task_keywords
+                    ])
         
-        # Add expanded terms combinations
-        for term in expanded_terms:
-            if term != base_query:
-                search_queries.append(f"{base_query} {term}")
+        # Add the original query as fallback
+        search_variations.append(query)
         
+        # If Gradio is required, add Gradio-specific searches
         if require_gradio:
-            search_queries.extend([f"{q} gradio" for q in search_queries])
+            gradio_variations = [f"{q} gradio" for q in search_variations]
+            search_variations.extend(gradio_variations)
         
-        # Search with all queries
+        # Deduplicate search variations
+        search_variations = list(set(search_variations))
+        
+        # Search and collect results
         all_results = []
-        found_spaces = set()  # Track unique spaces
+        found_spaces = set()
         
-        for search_query in search_queries:
+        for search_query in search_variations:
             search_url = f"https://duckduckgo.com/html/?q=site:huggingface.co/spaces {search_query}"
             
             try:
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-                response = requests.get(search_url, headers=headers)
+                response = requests.get(
+                    search_url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                )
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
                 for result in soup.select('.result'):
                     if len(all_results) >= max_results:
                         break
-                        
+                    
                     link = result.find('a', class_='result__a')
                     if not link:
                         continue
@@ -131,12 +158,10 @@ class HuggingFaceSpaceSearchTool(Tool):
                         continue
                     
                     space_id = space_match.group(1)
-                    
-                    # Skip if we've already found this space
                     if space_id in found_spaces:
                         continue
                     
-                    # Validate if needed
+                    # Validate space if needed
                     if require_gradio:
                         validation = self._validate_space(space_id)
                         if not validation.get('is_gradio', False):
@@ -146,13 +171,19 @@ class HuggingFaceSpaceSearchTool(Tool):
                     description = result.find('a', class_='result__snippet')
                     description = description.text.strip() if description else ""
                     
+                    # Calculate relevance score based on matched keywords
+                    matched_keywords = [
+                        kw for kw in task_keywords 
+                        if kw.lower() in f"{title} {description}".lower()
+                    ]
+                    
                     space_info = {
                         'space_id': space_id,
                         'title': title,
                         'description': description,
                         'url': f"https://huggingface.co/spaces/{space_id}",
-                        'requires_gradio': require_gradio,
-                        'matched_terms': [term for term in expanded_terms if term.lower() in f"{title} {description}".lower()]
+                        'matched_keywords': matched_keywords,
+                        'relevance_score': len(matched_keywords)
                     }
                     
                     all_results.append(space_info)
@@ -161,13 +192,13 @@ class HuggingFaceSpaceSearchTool(Tool):
             except Exception as e:
                 continue
         
-        # Sort results by relevance (number of matched terms)
-        all_results.sort(key=lambda x: len(x['matched_terms']), reverse=True)
+        # Sort results by relevance score
+        all_results.sort(key=lambda x: x['relevance_score'], reverse=True)
         
         return json.dumps({
             'status': 'success',
             'query': query,
-            'expanded_terms': expanded_terms,
+            'task_keywords': task_keywords,
             'results': all_results[:max_results]
         })
 
