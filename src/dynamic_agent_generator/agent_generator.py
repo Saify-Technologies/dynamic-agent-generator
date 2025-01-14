@@ -2,7 +2,7 @@ from smolagents import CodeAgent, HfApiModel, Tool, DuckDuckGoSearchTool
 from .tools.tool_generator import generate_tool
 from .tools.space_tool_generator import generate_space_tool
 from .tools.search_tools import search_huggingface_spaces, validate_space, duckduckgo_search
-from .tools.agent_setup_tools import setup_agent_directory
+from .tools.agent_structure_generator import generate_agent_structure
 from .tools.dependency_tools import install_dependencies, check_dependencies
 import json
 
@@ -16,7 +16,7 @@ class AgentGenerator:
                 generate_space_tool,
                 search_huggingface_spaces,
                 validate_space,
-                setup_agent_directory,
+                generate_agent_structure,
                 install_dependencies,
                 check_dependencies,
                 duckduckgo_search
@@ -45,11 +45,11 @@ class AgentGenerator:
                 max_steps=custom_max_steps,
                 additional_authorized_imports=self.agent._additional_authorized_imports
             )
-            return temp_agent.run(self._build_prompt(requirements))
+            return temp_agent.run(self._build_prompt(requirements, output_dir))
         
-        return self.agent.run(self._build_prompt(requirements))
+        return self.agent.run(self._build_prompt(requirements, output_dir))
 
-    def _build_prompt(self, requirements: str) -> str:
+    def _build_prompt(self, requirements: str, output_dir: str) -> str:
         """Helper method to build the generation prompt"""
         return f"""
         Create a new CodeAgent based on these requirements:
@@ -68,7 +68,10 @@ class AgentGenerator:
            - DuckDuckGoSearchTool for web search capability
            - Appropriate system prompt
            - Required imports and dependencies
-        5. Return the full setup instructions
+        5. Use generate_agent_structure to create the complete agent structure at: {output_dir}
+           - This will create proper directory structure
+           - Set up all necessary files
+           - Include documentation and examples
         
         When searching for Spaces:
         - Use specific search terms based on web research
@@ -86,4 +89,5 @@ class AgentGenerator:
         - Error handling for Space availability
         - Proper initialization of CodeAgent with all tools
         - Include DuckDuckGoSearchTool in generated agent for web search capability
+        - Proper directory structure and file organization
         """ 
