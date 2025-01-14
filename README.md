@@ -38,10 +38,6 @@ project/
 ## Installation
 
 ```bash
-# Install in development mode
-pip install -e .
-
-# Or install from requirements
 pip install -r requirements.txt
 ```
 
