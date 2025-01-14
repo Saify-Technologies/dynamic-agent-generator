@@ -31,6 +31,164 @@ class AgentGenerator:
             ]
         )
 
+    def _analyze_requirements(self, requirements: str) -> str:
+        """Get LLM suggestions for agent generation steps"""
+        analysis_prompt = f"""
+        Based on these requirements, suggest a detailed plan for generating a new AI agent:
+        {requirements}
+
+        Your response should be a JSON object with this structure:
+        {{
+            "analysis": {{
+                "required_capabilities": [
+                    "List of core capabilities needed"
+                ],
+                "suggested_tools": [
+                    {{
+                        "name": "tool_name",
+                        "purpose": "what this tool will do",
+                        "type": "custom/space",
+                        "search_terms": ["terms to find relevant spaces"]
+                    }}
+                ],
+                "architecture_decisions": [
+                    "Key decisions about agent structure"
+                ]
+            }},
+            "generation_steps": [
+                {{
+                    "step": 1,
+                    "action": "specific_action",
+                    "tool": "tool_to_use",
+                    "details": "detailed instructions for this step"
+                }}
+            ],
+            "additional_considerations": [
+                "Important points to consider during generation"
+            ]
+        }}
+
+        Make your response practical and specific to the requirements.
+        Focus on steps that use our available tools:
+        - generate_tool
+        - generate_space_tool
+        - search_huggingface_spaces
+        - validate_space
+        - generate_agent_structure
+        - install_dependencies
+        - check_dependencies
+        - duckduckgo_search
+        """
+
+        try:
+            result = self.agent.run(analysis_prompt)
+            return json.loads(result)
+        except Exception as e:
+            return json.dumps({
+                "status": "error",
+                "error": f"Failed to analyze requirements: {str(e)}"
+            })
+
+    def generate_agent(self, requirements: str, output_dir: str, custom_max_steps: Optional[int] = None):
+        """
+        Generates a new CodeAgent based on requirements
+        
+        Args:
+            requirements: Natural language description of agent requirements
+            output_dir: Directory to save generated agent
+            custom_max_steps: Optional override for max steps for this specific generation
+        """
+        try:
+            # First, analyze requirements and get generation steps
+            analysis = self._analyze_requirements(requirements)
+            if analysis.get("status") == "error":
+                return json.dumps(analysis)
+
+            # Use the analysis to build the generation prompt
+            generation_prompt = self._build_prompt(requirements, output_dir, analysis)
+
+            # Generate the agent
+            if custom_max_steps is not None:
+                temp_agent = CodeAgent(
+                    tools=self.agent.tools,
+                    model=self.model,
+                    max_steps=custom_max_steps,
+                    additional_authorized_imports=self.agent._additional_authorized_imports
+                )
+                result = temp_agent.run(generation_prompt)
+            else:
+                result = self.agent.run(generation_prompt)
+
+            # Parse the result
+            result_data = json.loads(result)
+            if result_data.get('status') == 'success':
+                agent_dir = result_data.get('agent_dir')
+                generated_tools = self._collect_generated_tools(agent_dir)
+                self._update_agent_imports(agent_dir, generated_tools)
+                
+                return json.dumps({
+                    'status': 'success',
+                    'message': 'Agent generated successfully with all tools',
+                    'agent_dir': agent_dir,
+                    'generated_tools': generated_tools,
+                    'analysis': analysis
+                })
+            
+            return result
+
+        except Exception as e:
+            return json.dumps({
+                'status': 'error',
+                'error': str(e)
+            })
+
+    def _build_prompt(self, requirements: str, output_dir: str, analysis: Dict) -> str:
+        """Build generation prompt using LLM's analysis"""
+        return f"""
+        Follow these steps to generate a new AI agent:
+
+        Requirements:
+        {requirements}
+
+        Generated Analysis:
+        {json.dumps(analysis.get('analysis', {}), indent=2)}
+
+        Steps to Execute:
+        {json.dumps(analysis.get('generation_steps', []), indent=2)}
+
+        Additional Considerations:
+        {json.dumps(analysis.get('additional_considerations', []), indent=2)}
+
+        Output Directory: {output_dir}
+
+        Use these tools as needed:
+        - generate_tool: Create custom tools
+        - generate_space_tool: Create tools from Hugging Face Spaces
+        - search_huggingface_spaces: Find relevant Spaces
+        - validate_space: Verify Space accessibility
+        - generate_agent_structure: Create agent directory structure
+        - install_dependencies: Handle package dependencies
+        - check_dependencies: Verify package installations
+        - duckduckgo_search: Web research capability
+
+        Execute each step in the generation_steps sequence, ensuring to:
+        1. Follow the exact order of steps
+        2. Use the specified tool for each step
+        3. Follow the detailed instructions for each step
+        4. Handle any errors appropriately
+        5. Report progress after each step
+
+        Return a JSON response with:
+        {{
+            "status": "success/error",
+            "message": "Status message",
+            "agent_dir": "Path to generated agent",
+            "steps_completed": ["List of completed steps"],
+            "generated_tools": ["List of generated tools"],
+            "errors": ["Any errors encountered"]
+        }}
+        """
+
     def _collect_generated_tools(self, agent_dir: str) -> List[Dict]:
         """Collect information about generated tools"""
         tools = []
@@ -46,54 +204,6 @@ class AgentGenerator:
                     })
         
         return tools
-
-    def generate_agent(self, requirements: str, output_dir: str, custom_max_steps: Optional[int] = None):
-        """
-        Generates a new CodeAgent based on requirements
-        
-        Args:
-            requirements: Natural language description of agent requirements
-            output_dir: Directory to save generated agent
-            custom_max_steps: Optional override for max steps for this specific generation
-        """
-        try:
-            # First, generate the agent structure and tools
-            if custom_max_steps is not None:
-                temp_agent = CodeAgent(
-                    tools=self.agent.tools,
-                    model=self.model,
-                    max_steps=custom_max_steps,
-                    additional_authorized_imports=self.agent._additional_authorized_imports
-                )
-                result = temp_agent.run(self._build_prompt(requirements, output_dir))
-            else:
-                result = self.agent.run(self._build_prompt(requirements, output_dir))
-
-            # Parse the result
-            result_data = json.loads(result)
-            if result_data.get('status') == 'success':
-                agent_dir = result_data.get('agent_dir')
-                
-                # Collect information about generated tools
-                generated_tools = self._collect_generated_tools(agent_dir)
-                
-                # Update agent.py to include generated tools
-                self._update_agent_imports(agent_dir, generated_tools)
-                
-                return json.dumps({
-                    'status': 'success',
-                    'message': 'Agent generated successfully with all tools',
-                    'agent_dir': agent_dir,
-                    'generated_tools': generated_tools
-                })
-            
-            return result
-
-        except Exception as e:
-            return json.dumps({
-                'status': 'error',
-                'error': str(e)
-            })
 
     def _update_agent_imports(self, agent_dir: str, tools: List[Dict]):
         """Update agent.py to include all generated tools"""
@@ -126,48 +236,3 @@ class AgentGenerator:
             
             with open(agent_file, 'w') as f:
                 f.write(content)
-
-    def _build_prompt(self, requirements: str, output_dir: str) -> str:
-        """Helper method to build the generation prompt"""
-        return f"""
-        Create a new CodeAgent based on these requirements:
-        {requirements}
-        
-        Follow these steps:
-        1. First use duckduckgo_search to research and understand the requirements
-        2. Analyze what tools will be needed based on the research
-        3. For each required capability:
-           a. Use search_huggingface_spaces to find relevant Spaces (returns JSON string)
-           b. Parse the JSON response and validate found Spaces
-           c. If a suitable Space is found, use generate_space_tool
-           d. If no suitable Space exists, generate a custom tool
-        4. Create the CodeAgent configuration file with:
-           - All generated/found tools
-           - DuckDuckGoSearchTool for web search capability
-           - Appropriate system prompt
-           - Required imports and dependencies
-        5. Use generate_agent_structure to create the complete agent structure at: {output_dir}
-           - This will create proper directory structure
-           - Set up all necessary files
-           - Include documentation and examples
-           - Ensure all generated tools are properly imported and initialized
-        
-        When searching for Spaces:
-        - Use specific search terms based on web research
-        - Parse the JSON responses carefully
-        - Validate that Spaces are still active and accessible
-        - Prefer Spaces with:
-          * High usage statistics
-          * Recent updates
-          * Clear documentation
-          * Gradio interface (for AI/ML tasks)
-        
-        Make sure to handle:
-        - Tool dependencies
-        - System prompt customization for CodeAgent
-        - Error handling for Space availability
-        - Proper initialization of CodeAgent with all tools
-        - Include DuckDuckGoSearchTool in generated agent for web search capability
-        - Proper directory structure and file organization
-        - Correct imports for all generated tools
-        """ 
