@@ -1,9 +1,14 @@
 from smolagents import CodeAgent, HfApiModel, Tool, DuckDuckGoSearchTool
-from .tools.tool_generator import generate_tool
-from .tools.space_tool_generator import generate_space_tool
-from .tools.search_tools import search_huggingface_spaces, validate_space, duckduckgo_search
-from .tools.agent_structure_generator import generate_agent_structure
-from .tools.dependency_tools import install_dependencies, check_dependencies
+from .tools import (
+    generate_tool,
+    generate_space_tool,
+    search_huggingface_spaces,
+    validate_space,
+    duckduckgo_search,
+    generate_agent_structure,
+    install_dependencies,
+    check_dependencies
+)
 import json
 
 class AgentGenerator:
