@@ -37,18 +37,49 @@ class AgentGenerator:
         Based on these requirements, suggest a detailed plan for generating a new AI agent:
         {requirements}
 
+        First, analyze if this task requires AI/ML capabilities:
+        1. Does it need:
+           - Image generation/processing
+           - Text generation/understanding
+           - Speech processing
+           - Other ML models
+        2. If YES:
+           a. Consider that many Spaces are named after popular models
+           b. Search for Spaces that implement the required functionality
+           c. Prefer Spaces that:
+              - Are actively maintained
+              - Have good documentation
+              - Show high usage statistics
+              - Match popular model names (likely better maintained)
+        3. If NO, always generate custom tools
+
         Your response should be a JSON object with this structure:
         {{
             "analysis": {{
+                "requires_ai": boolean,
+                "ai_components": [  # Only if requires_ai is true
+                    {{
+                        "type": "type of AI task",
+                        "description": "what AI capability is needed",
+                        "space_requirements": {{
+                            "popular_model_names": ["names of models to look for in spaces"],
+                            "required_features": ["specific features needed"],
+                            "search_terms": ["terms to find relevant spaces"]
+                        }}
+                    }}
+                ],
                 "required_capabilities": [
-                    "List of core capabilities needed"
+                    "List of all required capabilities"
                 ],
                 "suggested_tools": [
                     {{
                         "name": "tool_name",
                         "purpose": "what this tool will do",
-                        "type": "custom/space",
-                        "search_terms": ["terms to find relevant spaces"]
+                        "type": "custom",  # custom or space
+                        "implementation": {{
+                            "type": "custom/space",
+                            "space_search": ["search terms if using space"]
+                        }}
                     }}
                 ],
                 "architecture_decisions": [
@@ -60,7 +91,11 @@ class AgentGenerator:
                     "step": 1,
                     "action": "specific_action",
                     "tool": "tool_to_use",
-                    "details": "detailed instructions for this step"
+                    "details": "detailed instructions for this step",
+                    "space_integration": {{  # If step involves Space
+                        "search_terms": ["terms to search"],
+                        "validation_criteria": ["what to check in found spaces"]
+                    }}
                 }}
             ],
             "additional_considerations": [
@@ -68,16 +103,28 @@ class AgentGenerator:
             ]
         }}
 
-        Make your response practical and specific to the requirements.
-        Focus on steps that use our available tools:
-        - generate_tool
-        - generate_space_tool
-        - search_huggingface_spaces
-        - validate_space
-        - generate_agent_structure
-        - install_dependencies
-        - check_dependencies
-        - duckduckgo_search
+        Guidelines:
+        1. Default to custom tools for most functionality
+        2. For AI tasks:
+           - Search for appropriate Spaces
+           - Consider popular model names in search
+           - Validate Space functionality and maintenance
+        3. When evaluating Spaces:
+           - Check usage statistics
+           - Verify recent updates
+           - Look for good documentation
+           - Prefer Spaces using well-known models
+           - Ensure required features are present
+
+        Available tools:
+        - generate_tool: Create custom tools (USE THIS BY DEFAULT)
+        - generate_space_tool: Create tools from Hugging Face Spaces (FOR AI TASKS)
+        - search_huggingface_spaces: Find relevant Spaces (FOR AI TASKS)
+        - validate_space: Verify Space accessibility
+        - generate_agent_structure: Create agent directory structure
+        - install_dependencies: Handle package dependencies
+        - check_dependencies: Verify package installations
+        - duckduckgo_search: Web research capability
         """
 
         try:
