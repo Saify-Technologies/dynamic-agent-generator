@@ -1,13 +1,13 @@
-from smolagents import CodeAgent, HfApiModel, Tool
+from smolagents import CodeAgent, HfApiModel, Tool, DuckDuckGoSearchTool
 from .tools.tool_generator import generate_tool
 from .tools.space_tool_generator import generate_space_tool
-from .tools.search_tools import search_huggingface_spaces, validate_space
+from .tools.search_tools import search_huggingface_spaces, validate_space, duckduckgo_search
 from .tools.agent_setup_tools import setup_agent_directory
 from .tools.dependency_tools import install_dependencies, check_dependencies
 import json
 
 class AgentGenerator:
-    def __init__(self, model_id="meta-llama/Llama-2-70b-chat-hf", hf_token=None):
+    def __init__(self, model_id="meta-llama/Llama-2-70b-chat-hf", hf_token=None, max_steps=10):
         self.model = HfApiModel(model_id=model_id)
         self.hf_token = hf_token
         self.agent = CodeAgent(
@@ -18,55 +18,72 @@ class AgentGenerator:
                 validate_space,
                 setup_agent_directory,
                 install_dependencies,
-                check_dependencies
+                check_dependencies,
+                duckduckgo_search
             ],
             model=self.model,
+            max_steps=max_steps,
             additional_authorized_imports=[
                 "os", "black", "smolagents", "requests", "bs4",
                 "subprocess", "sys", "pkg_resources", "json"
             ]
         )
         
-    def generate_agent(self, requirements: str, output_dir: str):
+    def generate_agent(self, requirements: str, output_dir: str, custom_max_steps: int = None):
         """
         Generates a new CodeAgent based on requirements
         
         Args:
             requirements: Natural language description of agent requirements
             output_dir: Directory to save generated agent
+            custom_max_steps: Optional override for max steps for this specific generation
         """
-        prompt = f"""
+        if custom_max_steps is not None:
+            temp_agent = CodeAgent(
+                tools=self.agent.tools,
+                model=self.model,
+                max_steps=custom_max_steps,
+                additional_authorized_imports=self.agent._additional_authorized_imports
+            )
+            return temp_agent.run(self._build_prompt(requirements))
+        
+        return self.agent.run(self._build_prompt(requirements))
+
+    def _build_prompt(self, requirements: str) -> str:
+        """Helper method to build the generation prompt"""
+        return f"""
         Create a new CodeAgent based on these requirements:
         {requirements}
         
         Follow these steps:
-        1. First analyze what tools will be needed
-        2. For each required capability:
+        1. First use duckduckgo_search to research and understand the requirements
+        2. Analyze what tools will be needed based on the research
+        3. For each required capability:
            a. Use search_huggingface_spaces to find relevant Spaces (returns JSON string)
            b. Parse the JSON response and validate found Spaces
            c. If a suitable Space is found, use generate_space_tool
            d. If no suitable Space exists, generate a custom tool
-        3. Create the CodeAgent configuration file with:
+        4. Create the CodeAgent configuration file with:
            - All generated/found tools
+           - DuckDuckGoSearchTool for web search capability
            - Appropriate system prompt
            - Required imports and dependencies
-        4. Return the full setup instructions
+        5. Return the full setup instructions
         
         When searching for Spaces:
-        - Use specific search terms (e.g., "stable diffusion image generation gradio")
+        - Use specific search terms based on web research
         - Parse the JSON responses carefully
         - Validate that Spaces are still active and accessible
         - Prefer Spaces with:
           * High usage statistics
           * Recent updates
           * Clear documentation
-          * Gradio interface
+          * Gradio interface (for AI/ML tasks)
         
         Make sure to handle:
         - Tool dependencies
         - System prompt customization for CodeAgent
         - Error handling for Space availability
         - Proper initialization of CodeAgent with all tools
-        """
-        
-        return self.agent.run(prompt) 
+        - Include DuckDuckGoSearchTool in generated agent for web search capability
+        """ 
