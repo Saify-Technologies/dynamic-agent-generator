@@ -128,22 +128,25 @@ class ToolGenerator(Tool):
         # Generate implementation code based on requirements
         implementation_code = self._generate_implementation(requirements, output_type)
         
-        return f'''
+        # Create the code template without f-strings for the docstring parts
+        code_template = '''
 from smolagents import Tool
 from typing import Optional, Dict, Any, Union
 import json
 
 class {tool_name}Tool(Tool):
-    """{description}"""
+    """
+    {description}
+    """
     
-    name = "{tool_name.lower()}"
+    name = "{tool_name_lower}"
     description = "{description}"
-    inputs = {json.dumps(io_spec["input_types"], indent=4)}
+    inputs = {inputs}
     output_type = "{output_type}"
 
     def setup(self):
         """Initialize any expensive operations"""
-        {implementation_code.get('setup', '# No setup required\npass')}
+        {setup_code}
 
     def forward(self, **kwargs) -> {output_type}:
         """
@@ -161,10 +164,10 @@ class {tool_name}Tool(Tool):
         """
         try:
             # Validate inputs
-            {io_spec["validation_code"]}
+            {validation_code}
             
             # Implementation
-            {implementation_code.get('forward', '# Default implementation\nreturn json.dumps({"status": "success"})')}
+            {forward_code}
             
         except Exception as e:
             return json.dumps({{"status": "error", "error": str(e)}})
@@ -172,11 +175,26 @@ class {tool_name}Tool(Tool):
     @classmethod
     def from_hub(cls, repo_id: str, token: Optional[str] = None, **kwargs):
         """Optional: Add Hub integration"""
-        {implementation_code.get('from_hub', 'pass')}
+        {hub_code}
 
 # Create instance of the tool
-{tool_name.lower()} = {tool_name}Tool()
+{tool_name_lower} = {tool_name}Tool()
 '''
+        
+        # Format the code with proper values
+        formatted_code = code_template.format(
+            tool_name=tool_name,
+            tool_name_lower=tool_name.lower(),
+            description=description,
+            inputs=json.dumps(io_spec["input_types"], indent=4),
+            output_type=output_type,
+            setup_code=implementation_code.get('setup', '# No setup required\npass'),
+            validation_code=io_spec["validation_code"],
+            forward_code=implementation_code.get('forward', '# Default implementation\nreturn json.dumps({"status": "success"})'),
+            hub_code=implementation_code.get('from_hub', 'pass')
+        )
+        
+        return formatted_code
 
     def _format_code(self, code: str) -> str:
         """Format the code using black"""
