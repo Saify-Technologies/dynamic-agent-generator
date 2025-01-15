@@ -1,4 +1,4 @@
-from smolagents import Tool
+from smolagents import Tool, CodeAgent, HfApiModel
 import os
 import json
 from typing import Optional, Dict, Any
@@ -41,10 +41,14 @@ class ToolGenerator(Tool):
     def setup(self):
         """Initialize black formatter and ensure templates are ready"""
         self.mode = black.FileMode()
-        # Could add more setup if needed
+        # Model will be set when the tool is initialized by AgentGenerator
 
-    def _generate_tool_code(self, tool_name: str, description: str, inputs: Dict, output_type: str = "string") -> str:
-        """Generate the tool class code following smolagents.Tool specifications"""
+    def _generate_tool_code(self, tool_name: str, description: str, inputs: Dict, output_type: str = "string", requirements: str = "") -> str:
+        """Generate the tool class code with implementation based on requirements"""
+        
+        # Generate implementation code based on requirements
+        implementation_code = self._generate_implementation(requirements, output_type)
+        
         return f'''
 from smolagents import Tool
 from typing import Optional, Dict, Any
@@ -60,8 +64,7 @@ class {tool_name}Tool(Tool):
 
     def setup(self):
         """Initialize any expensive operations"""
-        # Add initialization code here if needed
-        pass
+        {implementation_code.get('setup', '# No setup required\npass')}
 
     def forward(self, **kwargs) -> {output_type}:
         """
@@ -74,20 +77,7 @@ class {tool_name}Tool(Tool):
             {output_type}: Results in the specified format
         """
         try:
-            # Tool implementation here
-            results = {{"status": "success", "message": "Tool executed successfully"}}
-            
-            # Convert result based on output_type
-            if self.output_type == "string":
-                return json.dumps(results)
-            elif self.output_type == "AgentImage":
-                # Handle image output
-                pass
-            elif self.output_type == "AgentAudio":
-                # Handle audio output
-                pass
-            else:
-                return json.dumps(results)
+            {implementation_code.get('forward', '# Default implementation\nreturn json.dumps({"status": "success"})')}
             
         except Exception as e:
             return json.dumps({{"status": "error", "error": str(e)}})
@@ -95,7 +85,7 @@ class {tool_name}Tool(Tool):
     @classmethod
     def from_hub(cls, repo_id: str, token: Optional[str] = None, **kwargs):
         """Optional: Add Hub integration"""
-        pass
+        {implementation_code.get('from_hub', 'pass')}
 
 # Create instance of the tool
 {tool_name.lower()} = {tool_name}Tool()
@@ -155,12 +145,13 @@ class {tool_name}Tool(Tool):
                     }
                 }
             
-            # Generate and format the tool code
+            # Generate and format the tool code - Pass requirements here
             tool_code = self._generate_tool_code(
                 tool_name=tool_name,
                 description=requirements,
                 inputs=input_types,
-                output_type=output_type
+                output_type=output_type,
+                requirements=requirements  # Add this line to pass requirements
             )
             formatted_code = self._format_code(tool_code)
             
@@ -191,6 +182,55 @@ class {tool_name}Tool(Tool):
                 "status": "error",
                 "error": str(e)
             })
+
+    def _generate_implementation(self, requirements: str, output_type: str) -> Dict[str, str]:
+        """Generate implementation code based on requirements"""
+        implementation_prompt = f"""
+        Generate implementation code for a tool with these requirements:
+        {requirements}
+        
+        Output type: {output_type}
+        
+        The implementation should include:
+        1. Any necessary setup code
+        2. The main forward() implementation
+        3. Optional from_hub() implementation if needed
+        
+        Return a JSON object with these sections:
+        {{
+            "setup": "setup code here",
+            "forward": "forward implementation here",
+            "from_hub": "hub integration code if needed"
+        }}
+        
+        Guidelines:
+        - Include proper error handling
+        - Follow best practices for the output_type
+        - Add relevant comments
+        - Import required packages
+        """
+        
+        try:
+            # Use the agent to generate implementation using the model from AgentGenerator
+            agent = CodeAgent(
+                model=self.model,  # This will be the model passed from AgentGenerator
+                max_steps=5,
+                additional_authorized_imports=[
+                    "os", "json", "requests", "typing",
+                    "torch", "transformers", "PIL", "numpy"
+                ]
+            )
+            result = agent.run(implementation_prompt)
+            return json.loads(result)
+            
+        except Exception as e:
+            print(f"Failed to generate implementation: {str(e)}")
+            # Return default implementation if generation fails
+            return {
+                "setup": "pass",
+                "forward": '# TODO: Implement based on requirements\nreturn json.dumps({"status": "not_implemented"})',
+                "from_hub": "pass"
+            }
 
 # Create instance of the tool
 generate_tool = ToolGenerator() 

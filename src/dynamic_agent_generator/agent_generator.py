@@ -9,7 +9,7 @@ import os
 from typing import List, Dict, Optional
 
 class AgentGenerator:
-    def __init__(self, model_id="meta-llama/Llama-2-70b-chat-hf", hf_token=None, max_steps=10):
+    def __init__(self, model_id="Qwen/Qwen2.5-Coder-32B-Instruct", hf_token=None, max_steps=10):
         self.model = HfApiModel(model_id=model_id)
         self.hf_token = hf_token
         self.agent = CodeAgent(
