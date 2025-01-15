@@ -1,7 +1,7 @@
 from smolagents import Tool, CodeAgent, HfApiModel
 import os
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import black
 
 class ToolGenerator(Tool):
@@ -43,15 +43,94 @@ class ToolGenerator(Tool):
         self.mode = black.FileMode()
         # Model will be set when the tool is initialized by AgentGenerator
 
+    def _validate_io_types(self, input_types: Dict, output_type: str) -> Dict[str, Any]:
+        """Validate and normalize input/output types according to smolagents specifications"""
+        valid_types = {
+            # Basic types that behave as normal Python types
+            "AgentText": "AgentText",  # Behaves as string
+            "AgentImage": "AgentImage",  # Behaves as PIL.Image
+            "AgentAudio": "AgentAudio",  # Audio type with samplerate
+            
+            # Python basic types
+            "string": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "dict": dict,
+            "list": list,
+            "bytes": bytes,
+            "NoneType": type(None)
+        }
+
+        # Validate output type
+        if output_type not in valid_types:
+            raise ValueError(f"Invalid output type: {output_type}. Must be one of {list(valid_types.keys())}")
+
+        # Validate input types
+        for param_name, param_spec in input_types.items():
+            if "type" not in param_spec:
+                raise ValueError(f"Input parameter {param_name} must specify a type")
+            
+            param_type = param_spec["type"]
+            if param_type not in valid_types:
+                raise ValueError(f"Invalid type for parameter {param_name}: {param_type}")
+            
+            # Add type validation code to the spec
+            if param_type.startswith("Agent"):
+                # For Agent types, we need to import from smolagents
+                param_spec["validation"] = f"isinstance(value, smolagents.{param_type})"
+            else:
+                # For basic Python types
+                param_spec["validation"] = f"isinstance(value, {valid_types[param_type].__name__})"
+            
+            # Add default value handling if specified
+            if "default" in param_spec:
+                if not isinstance(param_spec["default"], valid_types[param_type]):
+                    raise ValueError(f"Default value for {param_name} must be of type {param_type}")
+
+        return {
+            "input_types": input_types,
+            "output_type": output_type,
+            "validation_code": self._generate_validation_code(input_types)
+        }
+
+    def _generate_validation_code(self, input_types: Dict) -> str:
+        """Generate input validation code"""
+        validation_code = []
+        for param_name, param_spec in input_types.items():
+            required = not param_spec.get("nullable", False)
+            type_check = param_spec["validation"]
+            
+            if required:
+                validation_code.append(f"""
+            if "{param_name}" not in kwargs:
+                raise ValueError("Required parameter {param_name} is missing")
+            value = kwargs["{param_name}"]
+            if value is not None and not {type_check}:
+                raise TypeError("Parameter {param_name} must be of type {param_spec['type']}")
+                """)
+            else:
+                validation_code.append(f"""
+            if "{param_name}" in kwargs and kwargs["{param_name}"] is not None:
+                value = kwargs["{param_name}"]
+                if not {type_check}:
+                    raise TypeError("Parameter {param_name} must be of type {param_spec['type']}")
+                """)
+        
+        return "\n".join(validation_code)
+
     def _generate_tool_code(self, tool_name: str, description: str, inputs: Dict, output_type: str = "string", requirements: str = "") -> str:
         """Generate the tool class code with implementation based on requirements"""
+        
+        # Validate and normalize input/output types
+        io_spec = self._validate_io_types(inputs, output_type)
         
         # Generate implementation code based on requirements
         implementation_code = self._generate_implementation(requirements, output_type)
         
         return f'''
 from smolagents import Tool
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import json
 
 class {tool_name}Tool(Tool):
@@ -59,7 +138,7 @@ class {tool_name}Tool(Tool):
     
     name = "{tool_name.lower()}"
     description = "{description}"
-    inputs = {json.dumps(inputs, indent=4)}
+    inputs = {json.dumps(io_spec["input_types"], indent=4)}
     output_type = "{output_type}"
 
     def setup(self):
@@ -75,8 +154,16 @@ class {tool_name}Tool(Tool):
         
         Returns:
             {output_type}: Results in the specified format
+        
+        Raises:
+            ValueError: If required parameters are missing
+            TypeError: If parameters are of wrong type
         """
         try:
+            # Validate inputs
+            {io_spec["validation_code"]}
+            
+            # Implementation
             {implementation_code.get('forward', '# Default implementation\nreturn json.dumps({"status": "success"})')}
             
         except Exception as e:
