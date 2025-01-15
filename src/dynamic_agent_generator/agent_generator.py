@@ -1,7 +1,5 @@
 from smolagents import CodeAgent, HfApiModel, Tool, DuckDuckGoSearchTool
 from .tools.tool_generator import generate_tool
-from .tools.space_tool_generator import generate_space_tool
-from .tools.search_tools import search_huggingface_spaces, validate_space, duckduckgo_search
 from .tools.agent_structure_generator import generate_agent_structure
 from .tools.dependency_tools import install_dependencies, check_dependencies
 import json
@@ -15,18 +13,14 @@ class AgentGenerator:
         self.agent = CodeAgent(
             tools=[
                 generate_tool,
-                generate_space_tool,
-                search_huggingface_spaces,
-                validate_space,
                 generate_agent_structure,
                 install_dependencies,
                 check_dependencies,
-                duckduckgo_search
             ],
             model=self.model,
             max_steps=max_steps,
             additional_authorized_imports=[
-                "os", "black", "smolagents", "requests", "bs4",
+                "os", "black", "smolagents", 
                 "subprocess", "sys", "pkg_resources", "json"
             ]
         )
@@ -41,37 +35,14 @@ class AgentGenerator:
         1. First step MUST be creating the directory structure using generate_agent_structure
         2. Only after directory creation, proceed with tool generation and other steps
         
-        First, analyze if this task requires AI/ML capabilities:
-        1. Does it need:
-           - Image generation/processing
-           - Text generation/understanding
-           - Speech processing
-           - Other ML models
-        2. If YES:
-           a. Consider that many Spaces are named after popular models
-           b. Search for Spaces that implement the required functionality
-           c. Prefer Spaces that:
-              - Are actively maintained
-              - Have good documentation
-              - Show high usage statistics
-              - Match popular model names (likely better maintained)
-        3. If NO, always generate custom tools
-
+        First, analyze if this task requires basic tool capabilities:
+        1. What basic tools are needed for this task
+        2. What file operations might be needed
+        3. What system operations might be needed
+        
         Your response should be a JSON object with this structure:
         {{
             "analysis": {{
-                "requires_ai": boolean,
-                "ai_components": [  # Only if requires_ai is true
-                    {{
-                        "type": "type of AI task",
-                        "description": "what AI capability is needed",
-                        "space_requirements": {{
-                            "popular_model_names": ["names of models to look for in spaces"],
-                            "required_features": ["specific features needed"],
-                            "search_terms": ["terms to find relevant spaces"]
-                        }}
-                    }}
-                ],
                 "required_capabilities": [
                     "List of all required capabilities"
                 ],
@@ -79,10 +50,9 @@ class AgentGenerator:
                     {{
                         "name": "tool_name",
                         "purpose": "what this tool will do",
-                        "type": "custom",  # custom or space
+                        "type": "custom",  # custom only
                         "implementation": {{
-                            "type": "custom/space",
-                            "space_search": ["search terms if using space"]
+                            "type": "custom"
                         }}
                     }}
                 ],
@@ -113,27 +83,13 @@ class AgentGenerator:
         Guidelines:
         1. ALWAYS create directory structure as step 1
         2. All subsequent tool generation must reference the created directory structure
-        3. Default to custom tools for most functionality
-        4. For AI tasks:
-           - Search for appropriate Spaces
-           - Consider popular model names in search
-           - Validate Space functionality and maintenance
-        5. When evaluating Spaces:
-           - Check usage statistics
-           - Verify recent updates
-           - Look for good documentation
-           - Prefer Spaces using well-known models
-           - Ensure required features are present
-
+        3. Focus on basic file and system operations
+        
         Available tools:
         - generate_tool: Create custom tools (USE THIS BY DEFAULT)
-        - generate_space_tool: Create tools from Hugging Face Spaces (FOR AI TASKS)
-        - search_huggingface_spaces: Find relevant Spaces (FOR AI TASKS)
-        - validate_space: Verify Space accessibility
         - generate_agent_structure: Create agent directory structure
         - install_dependencies: Handle package dependencies
         - check_dependencies: Verify package installations
-        - duckduckgo_search: Web research capability
         """
 
         try:
@@ -158,20 +114,41 @@ class AgentGenerator:
             custom_max_steps: Optional override for max steps for this specific generation
         """
         try:
-            # First, analyze requirements and get generation steps
+            # First, analyze requirements
             analysis = self._analyze_requirements(requirements)
-            
-            # Add this check to ensure analysis is a dictionary
             if isinstance(analysis, str):
                 analysis = json.loads(analysis)
             
             if analysis.get("status") == "error":
                 return json.dumps(analysis)
 
-            # Use the analysis to build the generation prompt
-            generation_prompt = self._build_prompt(requirements, output_dir, analysis)
+            # Extract agent name and base path
+            agent_name = os.path.basename(output_dir)
+            base_path = os.path.dirname(output_dir)
 
-            # Generate the agent
+            # Create the complete structure first
+            structure_result = generate_agent_structure.forward(
+                agent_name=agent_name,
+                output_path=base_path,
+                tools_config=json.dumps(analysis.get('suggested_tools', [])),
+                agent_config=json.dumps({
+                    'model_id': self.model.model_id,
+                    'system_prompt': analysis.get('analysis', {}).get('system_prompt', ''),
+                    'imports': analysis.get('analysis', {}).get('required_imports', [])
+                }),
+                requirements=','.join(analysis.get('analysis', {}).get('required_capabilities', []))
+            )
+            
+            structure_data = json.loads(structure_result)
+            if structure_data.get('status') != 'success':
+                return structure_result
+
+            agent_dir = structure_data['agent_path']
+
+            # Generate tools in the created structure
+            generation_prompt = self._build_prompt(requirements, agent_dir, analysis)
+            
+            # Run tool generation
             if custom_max_steps is not None:
                 temp_agent = CodeAgent(
                     tools=self.agent.tools,
@@ -183,21 +160,28 @@ class AgentGenerator:
             else:
                 result = self.agent.run(generation_prompt)
 
-            # Parse the result
+            # Process generation results
             result_data = json.loads(result)
             if result_data.get('status') == 'success':
-                agent_dir = result_data.get('agent_dir')
+                # Collect and update generated tools
                 generated_tools = self._collect_generated_tools(agent_dir)
                 self._update_agent_imports(agent_dir, generated_tools)
-                
+
+                # Install required dependencies
+                if analysis.get('analysis', {}).get('required_capabilities'):
+                    install_dependencies.forward(
+                        requirements=','.join(analysis['analysis']['required_capabilities'])
+                    )
+
                 return json.dumps({
                     'status': 'success',
-                    'message': 'Agent generated successfully with all tools',
+                    'message': 'Agent generated successfully with complete structure',
                     'agent_dir': agent_dir,
                     'generated_tools': generated_tools,
-                    'analysis': analysis
+                    'analysis': analysis,
+                    'structure': structure_data
                 })
-            
+
             return result
 
         except Exception as e:
@@ -227,13 +211,9 @@ class AgentGenerator:
 
         Use these tools as needed:
         - generate_tool: Create custom tools
-        - generate_space_tool: Create tools from Hugging Face Spaces
-        - search_huggingface_spaces: Find relevant Spaces
-        - validate_space: Verify Space accessibility
         - generate_agent_structure: Create agent directory structure
         - install_dependencies: Handle package dependencies
         - check_dependencies: Verify package installations
-        - duckduckgo_search: Web research capability
 
         Execute each step in the generation_steps sequence, ensuring to:
         1. Follow the exact order of steps
@@ -261,12 +241,11 @@ class AgentGenerator:
         if os.path.exists(tools_dir):
             for file in os.listdir(tools_dir):
                 if file.endswith('.py') and file != '__init__.py':
-                    tool_name = file[:-3]  # Remove .py extension
+                    tool_name = file[:-3]
                     tools.append({
                         'name': tool_name,
                         'import_path': f'.tools.{tool_name}'
                     })
-        
         return tools
 
     def _update_agent_imports(self, agent_dir: str, tools: List[Dict]):
