@@ -31,12 +31,16 @@ class AgentGenerator:
             ]
         )
 
-    def _analyze_requirements(self, requirements: str) -> str:
+    def _analyze_requirements(self, requirements: str) -> Dict:
         """Get LLM suggestions for agent generation steps"""
         analysis_prompt = f"""
         Based on these requirements, suggest a detailed plan for generating a new AI agent:
         {requirements}
 
+        IMPORTANT: The generation steps MUST follow this exact order:
+        1. First step MUST be creating the directory structure using generate_agent_structure
+        2. Only after directory creation, proceed with tool generation and other steps
+        
         First, analyze if this task requires AI/ML capabilities:
         1. Does it need:
            - Image generation/processing
@@ -89,14 +93,17 @@ class AgentGenerator:
             "generation_steps": [
                 {{
                     "step": 1,
+                    "action": "Create agent directory structure",
+                    "tool": "generate_agent_structure",
+                    "details": "Set up the base directory structure for the agent"
+                }},
+                {{
+                    "step": 2,
                     "action": "specific_action",
                     "tool": "tool_to_use",
-                    "details": "detailed instructions for this step",
-                    "space_integration": {{  # If step involves Space
-                        "search_terms": ["terms to search"],
-                        "validation_criteria": ["what to check in found spaces"]
-                    }}
-                }}
+                    "details": "detailed instructions for this step"
+                }},
+                # ... additional steps ...
             ],
             "additional_considerations": [
                 "Important points to consider during generation"
@@ -104,12 +111,14 @@ class AgentGenerator:
         }}
 
         Guidelines:
-        1. Default to custom tools for most functionality
-        2. For AI tasks:
+        1. ALWAYS create directory structure as step 1
+        2. All subsequent tool generation must reference the created directory structure
+        3. Default to custom tools for most functionality
+        4. For AI tasks:
            - Search for appropriate Spaces
            - Consider popular model names in search
            - Validate Space functionality and maintenance
-        3. When evaluating Spaces:
+        5. When evaluating Spaces:
            - Check usage statistics
            - Verify recent updates
            - Look for good documentation
@@ -129,12 +138,15 @@ class AgentGenerator:
 
         try:
             result = self.agent.run(analysis_prompt)
-            return json.loads(result)
+            # Ensure we return a dictionary, not a string
+            if isinstance(result, str):
+                return json.loads(result)
+            return result
         except Exception as e:
-            return json.dumps({
+            return {
                 "status": "error",
                 "error": f"Failed to analyze requirements: {str(e)}"
-            })
+            }
 
     def generate_agent(self, requirements: str, output_dir: str, custom_max_steps: Optional[int] = None):
         """
@@ -148,6 +160,11 @@ class AgentGenerator:
         try:
             # First, analyze requirements and get generation steps
             analysis = self._analyze_requirements(requirements)
+            
+            # Add this check to ensure analysis is a dictionary
+            if isinstance(analysis, str):
+                analysis = json.loads(analysis)
+            
             if analysis.get("status") == "error":
                 return json.dumps(analysis)
 
